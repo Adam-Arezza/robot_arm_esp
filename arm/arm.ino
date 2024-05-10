@@ -155,14 +155,12 @@ void move_servo(ServoMotor &servo) {
   if (diff > 0) {
     //servo.currentPosition += 1 * dir;
     //move the servo motor
-     int pulseWidth = map(degrees, 0, 180, armServos[servoIndex].minpulse, armServos[servoIndex].maxpulse);  // convert the target to pulsewidth
-     int pulse_dir = (pulseWidth > armServos[servoIndex].currentPosition) ? 1 : -1;                          // get direction
-     int pulse = current_degrees + (increment * pulse_dir);
-     pulse = constrain(pulse, armServos[servoIndex].minpulse, armServos[servoIndex].maxpulse);
-     pwm.setPWM(armServos[servoIndex].pin, 0, pulse);  // increment/decrement the pulsewidth by the increment variable
-     armServos[servoIndex].currentPosition = pulse;    // Update the current position to the incremented value
+     //int pulseWidth = map(servo.targetPosition, 0, 180, armServos[servoIndex].minpulse, armServos[servoIndex].maxpulse);  // convert the target to pulsewidth
+     int pulse = servo.currentPosition + (1 * dir);
+     pulse = map(pulse, 0, 180, servo.minpulse, servo.maxpulse);
+    // pulse = constrain(pulse, armServos[servoIndex].minpulse, armServos[servoIndex].maxpulse);
+     pwm.setPWM(servo.pin, 0, pulse);  // increment/decrement the pulsewidth by the increment variable
      delay(delay_time);
-    
   }
 }
 
