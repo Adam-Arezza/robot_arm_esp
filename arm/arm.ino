@@ -31,11 +31,11 @@ int joint_selected = 0;
 
 //array of servos for each joint
 ServoMotor armServos[5] = {
-  { 0, 100, 700, 0, 0, 0, 0, 14 },  //100 - 500 = 0 - 180
-  { 1, 180, 440, 0, 0, 0, 0, 27 },  //180 - 440 = 0 - 180
-  { 2, 125, 500, 0, 0, 0, 0, 26 },  //125 - 500 = 0 - 180
-  { 3, 110, 470, 0, 0, 0, 0, 25 },  //110 - 470 = 0 - 180
-  { 4, 200, 400, 0, 0, 0, 0, 0 },         //315 is full close, 420 is full open
+  { 0, 100, 700, 180, 0, 0, 0, 4095, 900, 14 },  //100 - 500 = 0 - 180 max_pot_val:4095, min_pot_val:900
+  { 1, 180, 440, 90, 0, 0, 0, 3900, 700, 27 },  //180 - 440 = 0 - 180 max_pot_val:3900, min_pot_val:700
+  { 2, 125, 500, 0, 0, 0, 0, 3800, 500, 26 },  //125 - 500 = 0 - 180 max_pot_val:4000, min_pot_val:500
+  { 3, 110, 470, 0, 0, 0, 0, 3200, 210, 25 },  //110 - 470 = 0 - 180 max_pot_val:3475, min_pot_val:210
+  { 4, 200, 400, 0, 0, 0, 0, 0, 0, 0 },         //315 is full clo-se, 420 is full open
 };
 
 //encoder for manual control
@@ -65,6 +65,8 @@ void setup() {
   pinMode(encoder.pin_B, INPUT);
   pinMode(encoder.sw, INPUT);
 
+  startup();
+
   //start-up delay
   delay(50);
 }
@@ -84,6 +86,13 @@ void setup() {
 //     delay(delay_time);
 //   }
 // }
+
+void startup() {
+  //move each motor to its default position
+  for(int i = 0; i < sizeof(armServos) / sizeof(armServos[0]); i++) {
+    armServos[i].targetPosition = armServos[i].defaultPosition;
+    }
+  }
 
 void set_target_positions(String &s){
     char start_char = '<';
@@ -144,8 +153,16 @@ void move_servo(ServoMotor &servo) {
   }
   int diff = abs(servo.currentPosition - servo.targetPosition);
   if (diff > 0) {
-    servo.currentPosition += 1 * dir;
+    //servo.currentPosition += 1 * dir;
     //move the servo motor
+     int pulseWidth = map(degrees, 0, 180, armServos[servoIndex].minpulse, armServos[servoIndex].maxpulse);  // convert the target to pulsewidth
+     int pulse_dir = (pulseWidth > armServos[servoIndex].currentPosition) ? 1 : -1;                          // get direction
+     int pulse = current_degrees + (increment * pulse_dir);
+     pulse = constrain(pulse, armServos[servoIndex].minpulse, armServos[servoIndex].maxpulse);
+     pwm.setPWM(armServos[servoIndex].pin, 0, pulse);  // increment/decrement the pulsewidth by the increment variable
+     armServos[servoIndex].currentPosition = pulse;    // Update the current position to the incremented value
+     delay(delay_time);
+    
   }
 }
 
@@ -155,9 +172,16 @@ void loop() {
 
   //set each of the servos current pot values
   for (int i = 0; i < 5; i++) {
-    int mapped_pot_val = map(analogRead(armServos[i].potPin), 0, 4096, 0, 180);
+    int mapped_pot_val = map(analogRead(armServos[i].potPin), armServos[i].potMin, armServos[i].potMax, 0, 180);
     armServos[i].potVal = mapped_pot_val;
+    armServos[i].currentPosition = armServos[i].potVal;
+//    Serial.print("joint:");
+//    Serial.print(i);
+//    Serial.print("  ");
+//    Serial.print(armServos[i].potVal);
+//    Serial.print("  ");
   }
+//  Serial.println("");
 
   //Read in commands and parse the data
   if (Serial.available() > 0) {
