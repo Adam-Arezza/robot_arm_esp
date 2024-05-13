@@ -4,6 +4,7 @@
 #define SERVO_FREQ 50
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+const int delay_time = 1000;
 
 struct ServoMotor {
   int pin;
@@ -31,10 +32,10 @@ int joint_selected = 0;
 
 //array of servos for each joint
 ServoMotor armServos[5] = {
-  { 0, 100, 700, 180, 0, 0, 0, 4095, 900, 14 },  //100 - 500 = 0 - 180 max_pot_val:4095, min_pot_val:900
-  { 1, 180, 440, 90, 0, 0, 0, 3900, 700, 27 },  //180 - 440 = 0 - 180 max_pot_val:3900, min_pot_val:700
-  { 2, 125, 500, 0, 0, 0, 0, 3800, 500, 26 },  //125 - 500 = 0 - 180 max_pot_val:4000, min_pot_val:500
-  { 3, 110, 470, 0, 0, 0, 0, 3200, 210, 25 },  //110 - 470 = 0 - 180 max_pot_val:3475, min_pot_val:210
+  { 0, 170, 500, 0, 0, 0, 0, 4095, 900, 14 },  //100 - 500 = 0 - 180 max_pot_val:4095, min_pot_val:900
+  { 1, 190, 490, 90, 0, 0, 0, 3900, 700, 27 },  //180 - 440 = 0 - 180 max_pot_val:3900, min_pot_val:700
+  { 2, 100, 500, 0, 0, 0, 0, 3800, 500, 26 },  //125 - 500 = 0 - 180 max_pot_val:4000, min_pot_val:500
+  { 3, 110, 500, 0, 0, 0, 0, 3200, 210, 25 },  //110 - 470 = 0 - 180 max_pot_val:3475, min_pot_val:210
   { 4, 200, 400, 0, 0, 0, 0, 0, 0, 0 },         //315 is full clo-se, 420 is full open
 };
 
@@ -65,8 +66,11 @@ void setup() {
   pinMode(encoder.pin_B, INPUT);
   pinMode(encoder.sw, INPUT);
 
-  startup();
+  //startup();
 
+  pwm.setPWM(0,0,150);
+  delay(1000);
+  pwm.setPWM(0,0,500);
   //start-up delay
   delay(50);
 }
@@ -192,17 +196,17 @@ void loop() {
   }
 
   //if a servo is not at it's target, increment it towards it's target
-  for (int s = 0; s < sizeof(armServos) / sizeof(armServos[0]); s++) {
-    if (armServos[s].targetPosition != armServos[s].currentPosition) {
-      move_servo(armServos[s]);
-    }
-    response += String(armServos[s].currentPosition);
-    if (s == sizeof(armServos) / sizeof(armServos[0]) - 1) {
-      break;
-    } else {
-      response += ":";
-    }
-  }
+//  for (int s = 0; s < sizeof(armServos) / sizeof(armServos[0]); s++) {
+//    if (armServos[s].targetPosition != armServos[s].currentPosition) {
+//      move_servo(armServos[s]);
+//    }
+//    response += String(armServos[s].currentPosition);
+//    if (s == sizeof(armServos) / sizeof(armServos[0]) - 1) {
+//      break;
+//    } else {
+//      response += ":";
+//    }
+//  }
 
   if (response != prev_response){
       if (response.length() > 0 && response.begin() != ":") {
