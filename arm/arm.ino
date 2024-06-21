@@ -164,7 +164,7 @@ void move_servo(ServoMotor &servo) {
   if (diff > 2) 
   {
      int new_position = servo.currentPosition + (5 * dir);
-     int pulse = map(new_position, 0, 180, servo.minpulse, servo.maxpulse); 
+     int pulse = map(new_position, servo.minPosition, servo.maxPosition, servo.minpulse, servo.maxpulse); 
      pwm.setPWM(servo.pin, 0, pulse);  // increment/decrement the pulsewidth by the increment variable
      int measured_position = map(analogRead(servo.potPin), 
                                             servo.potMin, 
@@ -193,7 +193,7 @@ void move_servo(ServoMotor &servo) {
 
 
 void loop() {
-  String response = "";
+  String response = "<";
 
   //set each of the servos current pot values
   for (int i = 0; i < 5; i++) 
@@ -239,6 +239,7 @@ void loop() {
 
    if (s == sizeof(armServos) / sizeof(armServos[0]) - 1) 
    {
+     response += ">";
      break;
    } 
 
@@ -249,7 +250,7 @@ void loop() {
  }
 
   if (response != prev_response)
-  {
+  { 
       if (response.length() > 0 && response.begin() != ":") 
       {
           Serial.println(response);
