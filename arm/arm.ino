@@ -1,12 +1,18 @@
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
+#include <WiFi.h>
+
 
 #define SERVO_FREQ 50
+const char* ssid = "";
+const char* pwd = "";
+
+WiFiServer server(5000);
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
-const int delay_time = 50;
+const int delay_time = 5;
 
-struct ServoMotor 
+struct RobotJoint 
 {
   int pin;
   int minpulse;
@@ -22,20 +28,10 @@ struct ServoMotor
   const int potPin;
 };
 
-struct RotaryEncoder 
-{
-  int pin_A;
-  int pin_B;
-  int sw;
-  int currentState;
-  int lastState;
-  volatile int count;
-};
-
 int joint_selected = 0;
 
-//array of servos for each joint
-ServoMotor armServos[5] = {
+//array of joints
+RobotJoint armJoints[5] = {
   { 0, 420, 135, 180, 0, 0, 0, 180, 0, 4000, 800, 14 }, 
   { 1, 230, 490, 90, 0, 0, 0, 180, 0, 3350, 450, 27 },  
   { 2, 100, 490, 0, 0, 0,-90, 90, 0, 3250, 420, 26 },  
@@ -43,20 +39,33 @@ ServoMotor armServos[5] = {
   { 4, 200, 400, 0, 0, 0, 0, 180, 0, 0, 0, 0 },         
 };
 
+//last response sent
 String prev_response = "";
 
 void setup() {
 
-  //start serial
+//start serial
+//initialize the servo controller
   Serial.begin(115200);
   Serial.setTimeout(50);
+
+  WiFi.begin(ssid,pwd);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  
+  server.begin();
 
   pwm.begin();
   pwm.setOscillatorFrequency(27000000);
   pwm.setPWMFreq(SERVO_FREQ);
   startup();
 
-  //start-up delay
+
+
+//start-up delay
   delay(50);
 }
 
@@ -64,24 +73,24 @@ void startup() {
   // get the current position of each servo and set it's pwm value to the value it's currently at
   for (int i = 0; i < 5; i++)
   {
-    armServos[i].targetPosition = armServos[i].defaultPosition;
-    int current_pos = analogRead(armServos[i].potPin);
+    armJoints[i].targetPosition = armJoints[i].defaultPosition;
+    int current_pos = analogRead(armJoints[i].potPin);
 
     current_pos = map(current_pos, 
-                      armServos[i].potMin, 
-                      armServos[i].potMax, 
-                      armServos[i].minPosition, 
-                      armServos[i].maxPosition);
+                      armJoints[i].potMin, 
+                      armJoints[i].potMax, 
+                      armJoints[i].minPosition, 
+                      armJoints[i].maxPosition);
 
-    armServos[i].currentPosition = current_pos;
+    armJoints[i].currentPosition = current_pos;
 
     int pulse = map(current_pos, 
-                    armServos[i].minPosition, 
-                    armServos[i].maxPosition, 
-                    armServos[i].minpulse, 
-                    armServos[i].maxpulse);
+                    armJoints[i].minPosition, 
+                    armJoints[i].maxPosition, 
+                    armJoints[i].minpulse, 
+                    armJoints[i].maxpulse);
 
-    pwm.setPWM(armServos[i].pin, 0, pulse);
+    pwm.setPWM(armJoints[i].pin, 0, pulse);
   }
   delay(1000);
 }
@@ -103,7 +112,7 @@ void set_target_positions(String &s){
 
         if (s[i] == delimiter || i == s.length()) 
         {
-            armServos[number_of_joints].targetPosition = temp_str.toInt();
+            armJoints[number_of_joints].targetPosition = temp_str.toInt();
             number_of_joints += 1;
             temp_str = "";
         } 
@@ -121,8 +130,8 @@ void send_online_msg() {
     String online_response = "";
     for(int i = 0; i < 5; i++) 
     {
-        //online_response += armServos[i].potVal;
-        online_response += armServos[i].currentPosition;
+        //online_response += armJoints[i].potVal;
+        online_response += armJoints[i].currentPosition;
         //need to remove the extra ':' at the end
         if (i < 4) 
         {
@@ -134,25 +143,31 @@ void send_online_msg() {
 
 
 void parser(String s) {
-    //check string has values
-    if (s.length() >= 1) {
+    if (s.startsWith("online", 1))
+    {
+        send_online_msg();
+        return;
+    }
 
-        if (s.startsWith("online", 1))
-        {
-            send_online_msg();
-            return;
-        }
+    else
+    {
+        set_target_positions(s);
+    }
+}
 
-        else
-        {
-            //need more validation here, check if the format is correct for sending joint target angles
-            set_target_positions(s);
-        }
+bool check_valid_command(String command_string) {
+    if(!command_string.startsWith("<") && !command_string.endsWith(">"))
+    {
+        return false;
+    }
+    else
+    {
+        return true;
     }
 }
 
 
-void move_servo(ServoMotor &servo) {
+void move_servo(RobotJoint &servo) {
   int dir = 1;
   if (servo.currentPosition > servo.targetPosition) 
   {
@@ -161,9 +176,9 @@ void move_servo(ServoMotor &servo) {
 
   int diff = abs(servo.currentPosition - servo.targetPosition);
 
-  if (diff > 2) 
+  if (diff > 0) 
   {
-     int new_position = servo.currentPosition + (5 * dir);
+     int new_position = servo.currentPosition + (1 * dir);
      int pulse = map(new_position, servo.minPosition, servo.maxPosition, servo.minpulse, servo.maxpulse); 
      pwm.setPWM(servo.pin, 0, pulse);  // increment/decrement the pulsewidth by the increment variable
      int measured_position = map(analogRead(servo.potPin), 
@@ -172,10 +187,6 @@ void move_servo(ServoMotor &servo) {
                                             servo.minPosition, 
                                             servo.maxPosition);
      servo.currentPosition = new_position;
-    // Serial.print("Moving servo on pin ");
-    // Serial.print(servo.pin);
-    // Serial.print(" to ");
-    // Serial.println(new_position);
      delay(delay_time);
   }
 
@@ -198,46 +209,74 @@ void loop() {
   //set each of the servos current pot values
   for (int i = 0; i < 5; i++) 
   {
-    int mapped_pot_val = map(analogRead(armServos[i].potPin), 
-                                        armServos[i].potMin, 
-                                        armServos[i].potMax, 
-                                        armServos[i].minPosition, 
-                                        armServos[i].maxPosition);
-    armServos[i].potVal = mapped_pot_val;
-    //Serial.print("joint:");
-    //Serial.print(i);
-    //Serial.print("  ");
-    //Serial.print(mapped_pot_val);
-    //Serial.print(" target: ");
-    //Serial.println(armServos[i].targetPosition);
+    int mapped_pot_val = map(analogRead(armJoints[i].potPin), 
+                                        armJoints[i].potMin, 
+                                        armJoints[i].potMax, 
+                                        armJoints[i].minPosition, 
+                                        armJoints[i].maxPosition);
+    armJoints[i].potVal = mapped_pot_val;
   }
 
-  //Read in commands and parse the data
+  //Read in commands validate, parse the data
   if (Serial.available() > 0) 
   {
     String command_data = Serial.readString();
     command_data.trim();
+    bool valid_command = check_valid_command(command_data);
 
-    if(command_data.startsWith("<") && command_data.endsWith(">"))
+    if (valid_command)
     {
         parser(command_data);
     }
 
-    Serial.flush();
+    else
+    {
+        Serial.println("<Invalid command string>");
+        Serial.flush();
+    }
   }
 
-  //if a servo is not at it's target, increment it towards it's target
+  WiFiClient client = server.available();
+  if (client) {
+    Serial.println("New Client Connected");
+    while (client.connected()) {
+      if (client.available()) {
+        // Read data from the client
+        String wifi_data = client.readStringUntil('\n');
+        bool valid_command = check_valid_command(wifi_data);
+        if (valid_command)
+        {
+          parser(wifi_data);
+        }
+        else {
+          Serial.println("<Invalid command string>");
+          Serial.flush();
+        }
+
+        // Optionally send a response to the client
+        //client.println("Data received");
+      }
+    }
+    // Close the connection
+    client.stop();
+    Serial.println("Client Disconnected");
+  }
+
+//if a servo is not at it's target, increment it towards it's target
  for (int s = 0; s < 5; s++) 
  {
 
-   if (armServos[s].targetPosition != armServos[s].currentPosition) 
+   if (armJoints[s].targetPosition != armJoints[s].currentPosition) 
    {
-     move_servo(armServos[s]);
+     move_servo(armJoints[s]);
    }
 
-   response += String(armServos[s].currentPosition);
+   response += String(armJoints[s].currentPosition);
 
-   if (s == sizeof(armServos) / sizeof(armServos[0]) - 1) 
+// check if we are at the last joint, excluding gripper motor
+// if last, append the end of message character
+// else append the colon, expecting another value to append
+   if (s == sizeof(armJoints) / sizeof(armJoints[0]) - 1) 
    {
      response += ">";
      break;
@@ -249,6 +288,7 @@ void loop() {
    }
  }
 
+// check if the last response was the same as the current
   if (response != prev_response)
   { 
       if (response.length() > 0 && response.begin() != ":") 
@@ -259,5 +299,5 @@ void loop() {
   }
 
   Serial.flush();
-  delay(25);
+  delay(5);
 }
