@@ -4,7 +4,8 @@
 #define SERVO_FREQ 50
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
-const int delay_time = 50;
+int delay_time = 20;
+bool move_requested = false;
 
 struct ServoMotor 
 {
@@ -22,22 +23,10 @@ struct ServoMotor
   const int potPin;
 };
 
-struct RotaryEncoder 
-{
-  int pin_A;
-  int pin_B;
-  int sw;
-  int currentState;
-  int lastState;
-  volatile int count;
-};
-
-int joint_selected = 0;
-
 //array of servos for each joint
 ServoMotor armServos[5] = {
-  { 0, 420, 135, 180, 0, 0, 0, 180, 0, 4000, 800, 14 }, 
-  { 1, 230, 490, 90, 0, 0, 0, 180, 0, 3350, 450, 27 },  
+  { 0, 135, 420, 0, 0, 0, 0, 180, 0, 800, 4000, 14 }, 
+  { 1, 490, 230, 90, 0, 0, 0, 180, 0, 450, 3350, 27 },  
   { 2, 100, 490, 0, 0, 0,-90, 90, 0, 3250, 420, 26 },  
   { 3, 120, 490, 0, 0, 0,-90, 90, 0, 3200, 375, 25 },  
   { 4, 200, 400, 0, 0, 0, 0, 180, 0, 0, 0, 0 },         
@@ -54,8 +43,10 @@ void setup() {
   pwm.begin();
   pwm.setOscillatorFrequency(27000000);
   pwm.setPWMFreq(SERVO_FREQ);
+  //print program name and date
+  Serial.print("<arm.ino>");
+  Serial.println("<Last Update: >");
   startup();
-
   //start-up delay
   delay(50);
 }
@@ -145,7 +136,6 @@ void parser(String s) {
 
         else
         {
-            //need more validation here, check if the format is correct for sending joint target angles
             set_target_positions(s);
         }
     }
@@ -163,26 +153,29 @@ void move_servo(ServoMotor &servo) {
 
   if (diff > 2) 
   {
-     int new_position = servo.currentPosition + (5 * dir);
+     int new_position = servo.currentPosition + dir;
      int pulse = map(new_position, servo.minPosition, servo.maxPosition, servo.minpulse, servo.maxpulse); 
      pwm.setPWM(servo.pin, 0, pulse);  // increment/decrement the pulsewidth by the increment variable
-     int measured_position = map(analogRead(servo.potPin), 
-                                            servo.potMin, 
-                                            servo.potMax, 
-                                            servo.minPosition, 
-                                            servo.maxPosition);
      servo.currentPosition = new_position;
-    // Serial.print("Moving servo on pin ");
-    // Serial.print(servo.pin);
-    // Serial.print(" to ");
-    // Serial.println(new_position);
      delay(delay_time);
   }
 
   else
   {
+    servo.currentPosition = servo.targetPosition;
     return;
   }
+}
+
+bool checkMotorsAtTarget(){
+    for (int s = 0; s < 4; s++) 
+      {
+        if (armServos[s].targetPosition != armServos[s].currentPosition) 
+        {
+            return false;
+        }
+      }
+      return true;
 }
 
 //TODO
@@ -193,25 +186,6 @@ void move_servo(ServoMotor &servo) {
 
 
 void loop() {
-  String response = "<";
-
-  //set each of the servos current pot values
-  for (int i = 0; i < 5; i++) 
-  {
-    int mapped_pot_val = map(analogRead(armServos[i].potPin), 
-                                        armServos[i].potMin, 
-                                        armServos[i].potMax, 
-                                        armServos[i].minPosition, 
-                                        armServos[i].maxPosition);
-    armServos[i].potVal = mapped_pot_val;
-    //Serial.print("joint:");
-    //Serial.print(i);
-    //Serial.print("  ");
-    //Serial.print(mapped_pot_val);
-    //Serial.print(" target: ");
-    //Serial.println(armServos[i].targetPosition);
-  }
-
   //Read in commands and parse the data
   if (Serial.available() > 0) 
   {
@@ -221,41 +195,37 @@ void loop() {
     if(command_data.startsWith("<") && command_data.endsWith(">"))
     {
         parser(command_data);
+        move_requested = true;
     }
 
     Serial.flush();
   }
 
   //if a servo is not at it's target, increment it towards it's target
- for (int s = 0; s < 5; s++) 
- {
+  for (int s = 0; s < 4; s++) 
+  {
+    if (armServos[s].targetPosition != armServos[s].currentPosition) 
+    {
+        move_servo(armServos[s]);
+    }
+  }
 
-   if (armServos[s].targetPosition != armServos[s].currentPosition) 
-   {
-     move_servo(armServos[s]);
-   }
-
-   response += String(armServos[s].currentPosition);
-
-   if (s == sizeof(armServos) / sizeof(armServos[0]) - 1) 
-   {
-     response += ">";
-     break;
-   } 
-
-   else 
-   {
-     response += ":";
-   }
- }
-
-  if (response != prev_response)
-  { 
-      if (response.length() > 0 && response.begin() != ":") 
-      {
-          Serial.println(response);
-          prev_response = response;
-      }
+  if(checkMotorsAtTarget() && move_requested){
+    //debug only
+    // Serial.print("reached target");
+    //
+    Serial.print("<");
+    Serial.print(armServos[0].currentPosition);
+    Serial.print(":");
+    Serial.print(armServos[1].currentPosition);
+    Serial.print(":");
+    Serial.print(armServos[2].currentPosition);
+    Serial.print(":");
+    Serial.print(armServos[3].currentPosition);
+    Serial.print(":");
+    Serial.print(armServos[4].currentPosition);
+    Serial.println(">");
+    move_requested = false;
   }
 
   Serial.flush();
